@@ -62,28 +62,41 @@ async fn amfi() -> Result<AmfiClient, BackendError> {
 }
 
 // Error mapping:
-//   NotTrusted: lock/pairing/session/TLS failures (DeviceLocked, InvalidHostID, SessionInactive,
-//               plus messages mentioning lock, pairing, trust, tls or certificate, which covers the
-//               feature-gated PasswordProtected/UserDeniedPairing and the rustls/openssl variants).
+//   Locked:     DeviceLocked, or a message mentioning PasswordProtected/password (what lockdown and
+//               AMFI return while the phone is locked).
+//   NotTrusted: pairing/session/TLS failures (InvalidHostID, SessionInactive, plus messages
+//               mentioning locked, pairing, PairRecord, trust, tls or certificate).
 //   NoDevice:   DeviceNotFound / NotFound.
 //   Timeout:    idevice's own Timeout.
 //   Other:      everything else, with the original message.
 fn map_err(e: IdeviceError) -> BackendError {
-    let msg = e.to_string();
-    let lower = msg.to_lowercase();
     match e {
         IdeviceError::DeviceNotFound | IdeviceError::NotFound => BackendError::NoDevice,
         IdeviceError::Timeout => BackendError::Timeout,
-        IdeviceError::DeviceLocked
-        | IdeviceError::InvalidHostID
-        | IdeviceError::SessionInactive => BackendError::NotTrusted(msg),
-        _ if ["lock", "pairing", "trust", "tls", "certificate"]
-            .iter()
-            .any(|k| lower.contains(k)) =>
-        {
-            BackendError::NotTrusted(msg)
+        IdeviceError::DeviceLocked => BackendError::Locked,
+        IdeviceError::InvalidHostID | IdeviceError::SessionInactive => {
+            BackendError::NotTrusted(e.to_string())
         }
-        _ => BackendError::Other(msg),
+        e => classify(e.to_string()),
+    }
+}
+
+fn classify(msg: String) -> BackendError {
+    let lower = msg.to_lowercase();
+    let has = |ks: &[&str]| ks.iter().any(|k| lower.contains(k));
+    if has(&["passwordprotected", "password"]) {
+        BackendError::Locked
+    } else if has(&[
+        "locked",
+        "pairing",
+        "pairrecord",
+        "trust",
+        "tls",
+        "certificate",
+    ]) {
+        BackendError::NotTrusted(msg)
+    } else {
+        BackendError::Other(msg)
     }
 }
 
@@ -109,7 +122,10 @@ impl DevModeBackend for IdeviceBackend {
         self.with_timeout(async {
             let p = provider().await?;
             let mut ld = LockdownClient::connect(&p).await.map_err(map_err)?;
-            let pairing = p.get_pairing_file().await.map_err(map_err)?;
+            let pairing = p
+                .get_pairing_file()
+                .await
+                .map_err(|e| BackendError::NotTrusted(e.to_string()))?;
             ld.start_session(&pairing)
                 .await
                 .map_err(|e| BackendError::NotTrusted(e.to_string()))?;
@@ -177,10 +193,7 @@ mod tests {
             map_err(IdeviceError::InvalidHostID),
             BackendError::NotTrusted(_)
         ));
-        assert!(matches!(
-            map_err(IdeviceError::DeviceLocked),
-            BackendError::NotTrusted(_)
-        ));
+        assert_eq!(map_err(IdeviceError::DeviceLocked), BackendError::Locked);
         assert_eq!(
             map_err(IdeviceError::DeviceNotFound),
             BackendError::NoDevice
@@ -190,6 +203,21 @@ mod tests {
             map_err(IdeviceError::MalformedCommand),
             BackendError::Other(_)
         ));
+    }
+
+    #[test]
+    fn classify_messages() {
+        let c = |m: &str| classify(m.into());
+        assert_eq!(
+            c("unknown error 'PasswordProtected' returned from device"),
+            BackendError::Locked
+        );
+        assert!(matches!(
+            c("UnexpectedResponse PairRecord"),
+            BackendError::NotTrusted(_)
+        ));
+        assert!(matches!(c("device is locked"), BackendError::NotTrusted(_)));
+        assert!(matches!(c("block device"), BackendError::Other(_)));
     }
 
     #[tokio::test(start_paused = true)]
