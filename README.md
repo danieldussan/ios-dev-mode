@@ -4,6 +4,8 @@ Small desktop app that walks you through revealing and enabling **Developer Mode
 
 Languages: English · Español · Português (switch live from the footer). [Leer en español](README.es.md)
 
+<p align="center"><img src="assets/activated.png" alt="Developer Mode enabled screen" width="320"></p>
+
 ## What it does
 
 1. Detects the iPhone over USB (model, iOS version, current Developer Mode status).

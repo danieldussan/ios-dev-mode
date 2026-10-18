@@ -4,6 +4,8 @@ App de escritorio que te guía para mostrar y activar el **Modo de desarrollador
 
 Idiomas: Español · English · Português (se cambia en vivo desde el pie de la ventana). [Read in English](README.md)
 
+<p align="center"><img src="assets/activated.png" alt="Pantalla de modo desarrollador activo" width="320"></p>
+
 ## Qué hace
 
 1. Detecta el iPhone por USB (modelo, versión de iOS y estado actual del modo desarrollador).
