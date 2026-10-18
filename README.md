@@ -10,7 +10,7 @@ Languages: English · Español · Português (switch live from the footer). [Lee
 
 1. Detects the iPhone over USB (model, iOS version, current Developer Mode status).
 2. Makes the **Developer Mode** switch appear in *Settings > Privacy & Security*.
-3. Watches the phone while you turn it on and restart it. It follows the reboot, the reconnection and the unlock, sends the confirmation request and checks the final status.
+3. Watches the phone while you turn it on in Settings and the iPhone restarts. It follows the reboot, the reconnection and the unlock, sends the confirmation request and checks the final status.
 
 It is not 100% automatic: the iPhone never restarts by itself, and after a reboot iOS requires your passcode once. The app waits for you and tells you what to do at each step.
 
@@ -44,7 +44,7 @@ Typical flow:
 
 1. Connect the iPhone, unlock it and tap **Trust**.
 2. Press **Activate**. The app shows the option in Settings.
-3. On the iPhone: *Settings > Privacy & Security > Developer Mode*, turn it on and restart.
+3. On the iPhone: *Settings > Privacy & Security > Developer Mode*, turn it on, then tap **Restart** when the iPhone asks.
 4. After the reboot, unlock with your passcode and tap **Turn On** when asked.
 5. The app detects it and shows *Developer Mode active*. If it does not move on, press **Verify now**.
 

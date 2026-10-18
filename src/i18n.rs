@@ -85,11 +85,15 @@ strings! {
         "Mostrar opção em Ajustes"
     ],
     StepEnable => [
-        "Activar modo desarrollador",
-        "Enable Developer Mode",
-        "Ativar modo de desenvolvedor"
+        "Activar el modo en Ajustes",
+        "Turn it on in Settings",
+        "Ativar o modo em Ajustes"
     ],
-    StepReboot => ["Reinicio del iPhone", "iPhone restart", "Reinício do iPhone"],
+    StepReboot => [
+        "Reiniciar cuando el iPhone lo pida",
+        "Restart when the iPhone asks",
+        "Reiniciar quando o iPhone pedir"
+    ],
     StepReconnect => ["Reconexión", "Reconnection", "Reconexão"],
     StepAccept => ["Enviar confirmación", "Send confirmation", "Enviar confirmação"],
     StepConfirm => ["Confirmar en el iPhone", "Confirm on the iPhone", "Confirmar no iPhone"],
@@ -154,9 +158,9 @@ strings! {
         "Ative em Ajustes"
     ],
     BodySettings => [
-        "Abre Ajustes > Privacidad y seguridad > Modo de desarrollador, actívalo y reinicia el iPhone.",
-        "Open Settings > Privacy & Security > Developer Mode, turn it on and restart the iPhone.",
-        "Abra Ajustes > Privacidade e Segurança > Modo de Desenvolvedor, ative-o e reinicie o iPhone."
+        "Abre Ajustes > Privacidad y seguridad > Modo de desarrollador, actívalo y toca Reiniciar cuando el iPhone te lo pida.",
+        "Open Settings > Privacy & Security > Developer Mode, turn it on and tap Restart when the iPhone asks.",
+        "Abra Ajustes > Privacidade e Segurança > Modo de Desenvolvedor, ative-o e toque em Reiniciar quando o iPhone pedir."
     ],
     TitleRebooting => ["Reiniciando...", "Restarting...", "Reiniciando..."],
     BodyRebooting => [
@@ -203,9 +207,9 @@ strings! {
         "Não foi possível ler o iPhone ({detail})."
     ],
     ManualHelp => [
-        "Abre Ajustes > Privacidad y seguridad > Modo de desarrollador, actívalo y reinicia el iPhone. Luego toca Reintentar.",
-        "Open Settings > Privacy & Security > Developer Mode, turn it on and restart the iPhone. Then tap Retry.",
-        "Abra Ajustes > Privacidade e Segurança > Modo de Desenvolvedor, ative-o e reinicie o iPhone. Depois toque em Tentar novamente."
+        "Abre Ajustes > Privacidad y seguridad > Modo de desarrollador, actívalo y toca Reiniciar cuando el iPhone te lo pida. Luego toca Reintentar.",
+        "Open Settings > Privacy & Security > Developer Mode, turn it on and tap Restart when the iPhone asks. Then tap Retry.",
+        "Abra Ajustes > Privacidade e Segurança > Modo de Desenvolvedor, ative-o e toque em Reiniciar quando o iPhone pedir. Depois toque em Tentar novamente."
     ],
 }
 

@@ -10,7 +10,7 @@ Idiomas: Español · English · Português (se cambia en vivo desde el pie de la
 
 1. Detecta el iPhone por USB (modelo, versión de iOS y estado actual del modo desarrollador).
 2. Hace aparecer el interruptor **Modo de desarrollador** en *Ajustes > Privacidad y seguridad*.
-3. Vigila el teléfono mientras lo activas y lo reinicias. Sigue el reinicio, la reconexión y el desbloqueo, envía la confirmación y verifica el estado final.
+3. Vigila el teléfono mientras lo activas en Ajustes y el iPhone se reinicia. Sigue el reinicio, la reconexión y el desbloqueo, envía la confirmación y verifica el estado final.
 
 No es 100% automático: el iPhone no se reinicia solo y, tras reiniciar, iOS pide tu código una vez. La app espera y te dice qué hacer en cada paso.
 
@@ -44,7 +44,7 @@ Flujo típico:
 
 1. Conecta el iPhone, desbloquéalo y toca **Confiar**.
 2. Pulsa **Activar**. La app muestra la opción en Ajustes.
-3. En el iPhone: *Ajustes > Privacidad y seguridad > Modo de desarrollador*, actívalo y reinicia.
+3. En el iPhone: *Ajustes > Privacidad y seguridad > Modo de desarrollador*, actívalo y toca **Reiniciar** cuando el iPhone te lo pida.
 4. Tras el reinicio, desbloquea con tu código y toca **Activar** cuando lo pida.
 5. La app lo detecta y muestra *Modo desarrollador activo*. Si no avanza, pulsa **Verificar ahora**.
 
