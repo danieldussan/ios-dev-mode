@@ -1,0 +1,22 @@
+[package]
+name = "ios-dev-mode"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+async-trait = "0.1.92"
+idevice = { version = "=0.1.68", default-features = false, features = ["usbmuxd", "amfi", "ring"] }
+plist = "1.10.1"
+thiserror = "2"
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "time", "sync"] }
+
+[dev-dependencies]
+tokio = { version = "1.53.3", features = ["test-util", "macros", "rt"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+panic = "abort"
+codegen-units = 1
