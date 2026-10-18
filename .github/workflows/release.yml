@@ -5,14 +5,26 @@ on:
 permissions:
   contents: write
 jobs:
-  windows:
-    runs-on: windows-latest
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            bin: target/release/ios-dev-mode.exe
+            asset: ios-dev-mode-windows-x64.exe
+          - os: ubuntu-latest
+            bin: target/release/ios-dev-mode
+            asset: ios-dev-mode-linux-x64
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libwayland-dev
       - run: cargo build --release
-      - run: Copy-Item target/release/ios-dev-mode.exe ios-dev-mode-windows-x64.exe
+      - run: cp "${{ matrix.bin }}" "${{ matrix.asset }}"
+        shell: bash
       - uses: softprops/action-gh-release@v2
         with:
-          files: ios-dev-mode-windows-x64.exe
+          files: ${{ matrix.asset }}
