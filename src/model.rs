@@ -85,6 +85,14 @@ impl Phase {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ErrorKind {
+    Locked,
+    ReadFailed(String),
+    WatchTimeout,
+    Backend(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppState {
     Idle,
     NoUsbmuxd,
@@ -98,7 +106,7 @@ pub enum AppState {
     /// Watching the phone while the user acts on it.
     Waiting(Phase),
     Success,
-    Error(String),
+    Error(ErrorKind),
 }
 
 impl AppState {
@@ -107,10 +115,8 @@ impl AppState {
             BackendError::NoUsbmuxd => AppState::NoUsbmuxd,
             BackendError::NoDevice => AppState::NoDevice,
             BackendError::NotTrusted(m) => AppState::NotTrusted(m.clone()),
-            BackendError::Locked => {
-                AppState::Error("Desbloquea el iPhone y toca Reintentar.".into())
-            }
-            other => AppState::Error(other.to_string()),
+            BackendError::Locked => AppState::Error(ErrorKind::Locked),
+            other => AppState::Error(ErrorKind::Backend(other.to_string())),
         }
     }
 }
@@ -158,14 +164,17 @@ mod tests {
             AppState::from_error(&NotTrusted("x".into())),
             AppState::NotTrusted("x".into())
         );
-        assert!(matches!(AppState::from_error(&Locked), AppState::Error(_)));
+        assert_eq!(
+            AppState::from_error(&Locked),
+            AppState::Error(ErrorKind::Locked)
+        );
         assert_eq!(
             AppState::from_error(&Timeout),
-            AppState::Error("timed out".into())
+            AppState::Error(ErrorKind::Backend("timed out".into()))
         );
         assert_eq!(
             AppState::from_error(&Other("boom".into())),
-            AppState::Error("boom".into())
+            AppState::Error(ErrorKind::Backend("boom".into()))
         );
     }
 }

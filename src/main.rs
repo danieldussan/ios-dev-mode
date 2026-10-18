@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod app;
 mod backend;
+mod i18n;
 mod model;
 mod poller;
 mod ui;
@@ -20,7 +21,7 @@ fn main() -> eframe::Result {
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("Modo desarrollador iOS")
+            .with_title(i18n::t(i18n::Lang::from_env(), i18n::Key::WindowTitle))
             .with_inner_size([480.0, 560.0])
             .with_resizable(false),
         ..Default::default()

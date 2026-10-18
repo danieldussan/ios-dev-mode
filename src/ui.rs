@@ -1,122 +1,133 @@
-use crate::model::{AppState, Command, Phase, Step};
+use crate::i18n::{Key, Lang, t};
+use crate::model::{AppState, Command, ErrorKind, Phase, Step};
 use eframe::egui::{self, Color32, ProgressBar, RichText};
 
 const GREEN: Color32 = Color32::from_rgb(46, 160, 67);
 const RED: Color32 = Color32::from_rgb(214, 59, 59);
 const AMBER: Color32 = Color32::from_rgb(214, 148, 24);
 
-pub fn main_button(s: &AppState) -> (&'static str, Option<Command>) {
+pub fn main_button(s: &AppState) -> (Key, Option<Command>) {
     match s {
         AppState::Idle | AppState::Success | AppState::NotNeeded(_) => {
-            ("Verificar", Some(Command::Check))
+            (Key::BtnVerify, Some(Command::Check))
         }
         AppState::NoUsbmuxd | AppState::NoDevice | AppState::NotTrusted(_) | AppState::Error(_) => {
-            ("Reintentar", Some(Command::Check))
+            (Key::BtnRetry, Some(Command::Check))
         }
-        AppState::Ready(_) => ("Activar", Some(Command::Activate)),
-        AppState::Working(_) => ("Trabajando…", None),
-        AppState::Waiting(_) => ("Ya reinicié / Verificar ahora", Some(Command::Verify)),
+        AppState::Ready(_) => (Key::BtnActivate, Some(Command::Activate)),
+        AppState::Working(_) => (Key::BtnWorking, None),
+        AppState::Waiting(_) => (Key::BtnVerifyNow, Some(Command::Verify)),
     }
 }
 
-pub fn step_label(s: Step) -> &'static str {
+pub fn step_label(s: Step) -> Key {
     match s {
-        Step::Detect => "Detectar iPhone",
-        Step::Reveal => "Mostrar opción en Ajustes",
-        Step::Enable => "Activar modo desarrollador",
-        Step::Reboot => "Reinicio del iPhone",
-        Step::Reconnect => "Reconexión",
-        Step::Accept => "Enviar confirmación",
-        Step::Confirm => "Confirmar en el iPhone",
+        Step::Detect => Key::StepDetect,
+        Step::Reveal => Key::StepReveal,
+        Step::Enable => Key::StepEnable,
+        Step::Reboot => Key::StepReboot,
+        Step::Reconnect => Key::StepReconnect,
+        Step::Accept => Key::StepAccept,
+        Step::Confirm => Key::StepConfirm,
     }
 }
 
 /// (icon, title, color, body)
-fn header(s: &AppState) -> (&'static str, &'static str, Color32, String) {
+fn header(s: &AppState, lang: Lang) -> (&'static str, &'static str, Color32, String) {
     let gray = Color32::GRAY;
-    match s {
-        AppState::Idle => (
-            "📱",
-            "Listo para verificar",
-            gray,
-            "Conecta tu iPhone por USB y toca Verificar.".into(),
-        ),
+    let tr = |k| t(lang, k);
+    let (icon, title, color, body) = match s {
+        AppState::Idle => ("📱", Key::TitleIdle, gray, tr(Key::BodyIdle).to_string()),
         AppState::NoUsbmuxd => (
             "⚠",
-            "Sin conexión con el iPhone",
+            Key::TitleNoUsbmuxd,
             RED,
-            "Conecta el cable y desbloquea el iPhone con tu código (tras un reinicio no responde hasta entonces). Si sigue igual, instala iTunes o Apple Devices desde la web de Apple. Se reintenta solo."
-                .into(),
+            tr(Key::BodyNoUsbmuxd).to_string(),
         ),
         AppState::NoDevice => (
             "🔌",
-            "No hay iPhone",
+            Key::TitleNoDevice,
             AMBER,
-            "Conecta tu iPhone por USB, desbloquéalo y toca Confiar".into(),
+            tr(Key::BodyNoDevice).to_string(),
         ),
         AppState::NotTrusted(_) => (
             "🔒",
-            "iPhone sin confianza",
+            Key::TitleNotTrusted,
             AMBER,
-            "Toca Confiar en el iPhone y vuelve a intentar".into(),
+            tr(Key::BodyNotTrusted).to_string(),
         ),
         AppState::NotNeeded(v) => (
             "✔",
-            "No es necesario",
+            Key::TitleNotNeeded,
             gray,
-            format!("Este iPhone (iOS {v}) no necesita modo desarrollador"),
+            tr(Key::BodyNotNeeded).replace("{v}", v),
         ),
         AppState::Ready(d) => (
             "📱",
-            "iPhone detectado",
+            Key::TitleReady,
             AMBER,
-            format!(
-                "{} · {} · iOS {}\nEl modo desarrollador está desactivado.",
-                d.name, d.product_type, d.ios_version
-            ),
+            tr(Key::BodyReady)
+                .replace("{name}", &d.name)
+                .replace("{model}", &d.product_type)
+                .replace("{v}", &d.ios_version),
         ),
-        AppState::Working(Step::Reconnect) => {
-            ("⏳", "Trabajando…", AMBER, "Desbloquea tu iPhone".into())
-        }
+        AppState::Working(Step::Reconnect) => (
+            "⏳",
+            Key::TitleWorking,
+            AMBER,
+            tr(Key::BodyUnlockPhone).to_string(),
+        ),
         AppState::Working(_) => (
             "⏳",
-            "Trabajando…",
+            Key::TitleWorking,
             AMBER,
-            "No desconectes el cable.".into(),
+            tr(Key::BodyDontUnplug).to_string(),
         ),
         AppState::Waiting(Phase::Settings) => (
             "👆",
-            "Actívalo en Ajustes",
+            Key::TitleSettings,
             AMBER,
-            "Abre Ajustes > Privacidad y seguridad > Modo de desarrollador, actívalo y reinicia el iPhone."
-                .into(),
+            tr(Key::BodySettings).to_string(),
         ),
         AppState::Waiting(Phase::Rebooting) => (
             "⏳",
-            "Reiniciando...",
+            Key::TitleRebooting,
             AMBER,
-            "Espera a que el iPhone vuelva a encender. La conexión regresa sola.".into(),
+            tr(Key::BodyRebooting).to_string(),
         ),
         AppState::Waiting(Phase::Locked) => (
             "🔒",
-            "Desbloquea el iPhone",
+            Key::TitleLocked,
             AMBER,
-            "Después de reiniciar, el iPhone necesita tu código. Ingrésalo en el iPhone y esta pantalla seguirá sola.".into(),
+            tr(Key::BodyLocked).to_string(),
         ),
         AppState::Waiting(Phase::Confirm) => (
             "👆",
-            "Falta tu confirmación",
+            Key::TitleConfirm,
             AMBER,
-            "Confirma en el iPhone: toca Activar e ingresa tu código".into(),
+            tr(Key::BodyConfirm).to_string(),
         ),
         AppState::Success => (
             "✔",
-            "Modo desarrollador activo",
+            Key::TitleSuccess,
             GREEN,
-            "Todo listo.".into(),
+            tr(Key::BodySuccess).to_string(),
         ),
-        AppState::Error(m) => ("✖", "Algo salió mal", RED, m.clone()),
-    }
+        AppState::Error(kind) => {
+            let body = match kind {
+                ErrorKind::Locked => tr(Key::ErrLocked).to_string(),
+                ErrorKind::ReadFailed(d) => format!(
+                    "{} {}",
+                    tr(Key::ErrReadFailed).replace("{detail}", d),
+                    tr(Key::ManualHelp)
+                ),
+                ErrorKind::WatchTimeout => tr(Key::ManualHelp).to_string(),
+                ErrorKind::Backend(d) => d.clone(),
+            };
+            ("✖", Key::ErrTitle, RED, body)
+        }
+    };
+    (icon, t(lang, title), color, body)
 }
 
 /// Fraction of steps done, for the progress bar. None = hide the bar.
@@ -131,8 +142,8 @@ fn progress(s: &AppState) -> Option<(usize, f32)> {
     Some((cur, cur as f32 / Step::ALL.len() as f32))
 }
 
-pub fn show(ui: &mut egui::Ui, state: &AppState, log: &[String]) -> Option<Command> {
-    let (icon, title, color, body) = header(state);
+pub fn show(ui: &mut egui::Ui, state: &AppState, log: &[String], lang: Lang) -> Option<Command> {
+    let (icon, title, color, body) = header(state, lang);
     ui.add_space(12.0);
     ui.vertical_centered(|ui| {
         ui.label(RichText::new(icon).size(48.0).color(color));
@@ -149,7 +160,7 @@ pub fn show(ui: &mut egui::Ui, state: &AppState, log: &[String]) -> Option<Comma
                 std::cmp::Ordering::Equal if *state != AppState::Success => ("▶", AMBER),
                 _ => ("○", Color32::GRAY),
             };
-            ui.label(RichText::new(format!("{mark}  {}", step_label(st))).color(c));
+            ui.label(RichText::new(format!("{mark}  {}", t(lang, step_label(st)))).color(c));
         }
         ui.add_space(6.0);
         ui.add(ProgressBar::new(frac));
@@ -157,6 +168,7 @@ pub fn show(ui: &mut egui::Ui, state: &AppState, log: &[String]) -> Option<Comma
 
     ui.add_space(12.0);
     let (label, cmd) = main_button(state);
+    let label = t(lang, label);
     let mut out = None;
     ui.vertical_centered(|ui| {
         let main = ui.add_enabled(
@@ -166,22 +178,24 @@ pub fn show(ui: &mut egui::Ui, state: &AppState, log: &[String]) -> Option<Comma
         if main.clicked() {
             out = cmd;
         }
-        if matches!(state, AppState::Waiting(_)) && ui.button("Cancelar").clicked() {
+        if matches!(state, AppState::Waiting(_)) && ui.button(t(lang, Key::Cancel)).clicked() {
             out = Some(Command::Check);
         }
     });
 
     ui.add_space(8.0);
-    egui::CollapsingHeader::new("Detalles").show(ui, |ui| {
-        egui::ScrollArea::vertical()
-            .max_height(120.0)
-            .stick_to_bottom(true)
-            .show(ui, |ui| {
-                for l in log {
-                    ui.monospace(l);
-                }
-            });
-    });
+    egui::CollapsingHeader::new(t(lang, Key::Details))
+        .id_salt("details")
+        .show(ui, |ui| {
+            egui::ScrollArea::vertical()
+                .max_height(120.0)
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    for l in log {
+                        ui.monospace(l);
+                    }
+                });
+        });
 
     out
 }
@@ -201,7 +215,7 @@ mod tests {
         };
         assert_eq!(
             main_button(&AppState::Idle),
-            ("Verificar", Some(Command::Check))
+            (Key::BtnVerify, Some(Command::Check))
         );
         assert_eq!(main_button(&AppState::Success).1, Some(Command::Check));
         assert_eq!(
@@ -212,21 +226,21 @@ mod tests {
             AppState::NoUsbmuxd,
             AppState::NoDevice,
             AppState::NotTrusted("x".into()),
-            AppState::Error("e".into()),
+            AppState::Error(ErrorKind::Locked),
         ] {
-            assert_eq!(main_button(&s), ("Reintentar", Some(Command::Check)));
+            assert_eq!(main_button(&s), (Key::BtnRetry, Some(Command::Check)));
         }
         assert_eq!(
             main_button(&AppState::Ready(d)),
-            ("Activar", Some(Command::Activate))
+            (Key::BtnActivate, Some(Command::Activate))
         );
         assert_eq!(
             main_button(&AppState::Working(Step::Enable)),
-            ("Trabajando…", None)
+            (Key::BtnWorking, None)
         );
         assert_eq!(
             main_button(&AppState::Waiting(Phase::Settings)),
-            ("Ya reinicié / Verificar ahora", Some(Command::Verify))
+            (Key::BtnVerifyNow, Some(Command::Verify))
         );
     }
 }

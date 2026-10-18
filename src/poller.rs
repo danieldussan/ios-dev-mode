@@ -1,5 +1,5 @@
 use crate::backend::DevModeBackend;
-use crate::model::{AppState, BackendError, Command, Event, Phase, Step};
+use crate::model::{AppState, BackendError, Command, ErrorKind, Event, Phase, Step};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -25,8 +25,6 @@ impl Default for PollConfig {
 }
 
 pub type Emit<'a> = &'a (dyn Fn(Event) + Sync);
-
-const MANUAL_HELP: &str = "Abre Ajustes > Privacidad y seguridad > Modo de desarrollador, actívalo y reinicia el iPhone. Luego toca Reintentar.";
 
 fn log(emit: Emit, step: Step, res: &dyn std::fmt::Debug) {
     emit(Event::Log(format!("{step:?}: {res:?}")));
@@ -66,9 +64,7 @@ fn check_error(e: &BackendError) -> AppState {
         BackendError::NoUsbmuxd | BackendError::NoDevice | BackendError::NotTrusted(_) => {
             AppState::from_error(e)
         }
-        other => AppState::Error(format!(
-            "No se pudo leer el iPhone ({other}). {MANUAL_HELP}"
-        )),
+        other => AppState::Error(ErrorKind::ReadFailed(other.to_string())),
     }
 }
 
@@ -107,12 +103,12 @@ pub async fn check(
                 note(
                     emit,
                     &mut last_err,
-                    "Check: iPhone bloqueado (PasswordProtected)".into(),
+                    "Check: locked (PasswordProtected)".into(),
                 );
                 state(emit, AppState::Waiting(Phase::Locked));
                 last_shown = None;
                 if Instant::now() >= end {
-                    state(emit, AppState::Error(MANUAL_HELP.into()));
+                    state(emit, AppState::Error(ErrorKind::WatchTimeout));
                     return None;
                 }
                 if let Err(next) = pause(rx, cfg.tick, &mut false).await {
@@ -195,7 +191,7 @@ async fn watch(
         }
         force = false;
         if Instant::now() >= end {
-            state(emit, AppState::Error(MANUAL_HELP.into()));
+            state(emit, AppState::Error(ErrorKind::WatchTimeout));
             return None;
         }
         if let Err(next) = pause(rx, cfg.tick, &mut force).await {
@@ -387,13 +383,15 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn check_other_error_is_spanish() {
+    async fn check_other_error_is_read_failed() {
         let b = MockBackend::new(Script {
             detect: [Err(BackendError::Other("boom".into()))].into(),
             ..Script::default()
         });
         let s = run_check(&b).await;
-        assert!(matches!(s.last(), Some(AppState::Error(m)) if m.contains("No se pudo leer")));
+        assert!(
+            matches!(s.last(), Some(AppState::Error(ErrorKind::ReadFailed(d))) if d.contains("boom"))
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -457,7 +455,7 @@ mod tests {
             ..Script::default()
         });
         let s = run_activate(&b).await;
-        assert!(matches!(s.last(), Some(AppState::Error(m)) if m.contains("Reintentar")));
+        assert_eq!(s.last(), Some(&AppState::Error(ErrorKind::WatchTimeout)));
     }
 
     #[tokio::test(start_paused = true)]

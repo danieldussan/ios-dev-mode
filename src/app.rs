@@ -1,3 +1,4 @@
+use crate::i18n::{Key, Lang, t};
 use crate::model::{AppState, Command, Event};
 use crate::ui;
 use eframe::egui;
@@ -12,6 +13,7 @@ pub struct App {
     pub cmd_tx: UnboundedSender<Command>,
     pub ev_rx: Receiver<Event>,
     pub warned_usbmuxd: bool,
+    pub lang: Lang,
 }
 
 impl App {
@@ -22,6 +24,7 @@ impl App {
             cmd_tx,
             ev_rx,
             warned_usbmuxd: false,
+            lang: Lang::from_env(),
         }
     }
 }
@@ -37,7 +40,7 @@ impl eframe::App for App {
 
         let mut cmd = None;
         egui::CentralPanel::default().show(ui, |ui| {
-            cmd = ui::show(ui, &self.state, &self.log);
+            cmd = ui::show(ui, &self.state, &self.log, self.lang);
         });
         if let Some(c) = cmd {
             let _ = self.cmd_tx.send(c);
@@ -45,14 +48,17 @@ impl eframe::App for App {
 
         if self.state == AppState::NoUsbmuxd && !self.warned_usbmuxd {
             self.warned_usbmuxd = true;
+            let (yes, no) = (
+                t(self.lang, Key::PopupOpen).to_string(),
+                t(self.lang, Key::PopupClose).to_string(),
+            );
             let open = rfd::MessageDialog::new()
                 .set_level(rfd::MessageLevel::Warning)
-                .set_title("Sin conexión con el iPhone")
-                .set_description("Conecta el cable y desbloquea el iPhone con tu código (tras un reinicio no responde hasta entonces). Si sigue igual, instala iTunes o Apple Devices desde la web de Apple. La app reintenta sola.")
-                .set_buttons(rfd::MessageButtons::OkCancelCustom("Abrir página de Apple".into(), "Cerrar".into()))
+                .set_title(t(self.lang, Key::TitleNoUsbmuxd))
+                .set_description(t(self.lang, Key::PopupDesc))
+                .set_buttons(rfd::MessageButtons::OkCancelCustom(yes.clone(), no))
                 .show();
-            if matches!(open, rfd::MessageDialogResult::Custom(s) if s == "Abrir página de Apple")
-            {
+            if matches!(open, rfd::MessageDialogResult::Custom(s) if s == yes) {
                 ui.ctx().open_url(egui::OpenUrl::new_tab(ITUNES_URL));
             }
         }
