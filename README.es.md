@@ -21,7 +21,17 @@ No es 100% automático: el iPhone no se reinicia solo y, tras reiniciar, iOS pid
 
 ## Uso
 
-Descarga el binario desde [Releases](../../releases) (`.exe` para Windows) o ejecuta desde el código:
+Descarga el binario de tu sistema desde [Releases](../../releases) o ejecuta desde el código.
+
+- **Windows:** ejecuta `ios-dev-mode-windows-x64.exe`.
+- **Linux:** dale permiso de ejecución y ejecútalo (con el servicio `usbmuxd` disponible):
+
+  ```
+  chmod +x ios-dev-mode-linux-x64
+  ./ios-dev-mode-linux-x64
+  ```
+
+Desde el código:
 
 ```
 cargo run --release

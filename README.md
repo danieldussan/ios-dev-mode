@@ -21,7 +21,17 @@ It is not 100% automatic: the iPhone never restarts by itself, and after a reboo
 
 ## Usage
 
-Download the binary from the [Releases](../../releases) page (Windows `.exe`), or run from source:
+Download the binary for your system from the [Releases](../../releases) page, or run from source.
+
+- **Windows:** run `ios-dev-mode-windows-x64.exe`.
+- **Linux:** make it executable and run it (with the `usbmuxd` service available):
+
+  ```
+  chmod +x ios-dev-mode-linux-x64
+  ./ios-dev-mode-linux-x64
+  ```
+
+From source:
 
 ```
 cargo run --release
