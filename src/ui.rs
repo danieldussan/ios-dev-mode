@@ -43,9 +43,9 @@ fn header(s: &AppState) -> (&'static str, &'static str, Color32, String) {
         ),
         AppState::NoUsbmuxd => (
             "⚠",
-            "Falta iTunes",
+            "Sin conexión con el iPhone",
             RED,
-            "Instala iTunes (o Apple Devices) desde la web de Apple y vuelve a abrir esta app."
+            "Conecta el cable y desbloquea el iPhone con tu código (tras un reinicio no responde hasta entonces). Si sigue igual, instala iTunes o Apple Devices desde la web de Apple. Se reintenta solo."
                 .into(),
         ),
         AppState::NoDevice => (

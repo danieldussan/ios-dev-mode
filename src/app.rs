@@ -47,8 +47,8 @@ impl eframe::App for App {
             self.warned_usbmuxd = true;
             let open = rfd::MessageDialog::new()
                 .set_level(rfd::MessageLevel::Warning)
-                .set_title("Falta iTunes")
-                .set_description("Instala iTunes (o Apple Devices) desde la web de Apple y vuelve a abrir esta app.")
+                .set_title("Sin conexión con el iPhone")
+                .set_description("Conecta el cable y desbloquea el iPhone con tu código (tras un reinicio no responde hasta entonces). Si sigue igual, instala iTunes o Apple Devices desde la web de Apple. La app reintenta sola.")
                 .set_buttons(rfd::MessageButtons::OkCancelCustom("Abrir página de Apple".into(), "Cerrar".into()))
                 .show();
             if matches!(open, rfd::MessageDialogResult::Custom(s) if s == "Abrir página de Apple")
