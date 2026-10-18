@@ -1,6 +1,6 @@
 use crate::i18n::{Key, Lang, t};
 use crate::model::{AppState, Command, ErrorKind, Phase, Step};
-use eframe::egui::{self, Color32, ProgressBar, RichText};
+use eframe::egui::{self, Align, Color32, Layout, ProgressBar, RichText};
 
 const GREEN: Color32 = Color32::from_rgb(46, 160, 67);
 const RED: Color32 = Color32::from_rgb(214, 59, 59);
@@ -142,7 +142,46 @@ fn progress(s: &AppState) -> Option<(usize, f32)> {
     Some((cur, cur as f32 / Step::ALL.len() as f32))
 }
 
+const GITHUB_URL: &str = "https://github.com/danieldussan";
+
+pub fn footer(ui: &mut egui::Ui, lang: &mut Lang) {
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.hyperlink_to(t(*lang, Key::MadeBy), GITHUB_URL);
+        let icon = ui
+            .add(
+                egui::Image::new(egui::include_image!("../assets/github.svg"))
+                    .fit_to_exact_size(egui::vec2(18.0, 18.0))
+                    .tint(ui.visuals().text_color())
+                    .sense(egui::Sense::click()),
+            )
+            .on_hover_cursor(egui::CursorIcon::PointingHand);
+        if icon.clicked() {
+            ui.ctx().open_url(egui::OpenUrl::new_tab(GITHUB_URL));
+        }
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            egui::ComboBox::from_id_salt("lang")
+                .selected_text(lang.name())
+                .show_ui(ui, |ui| {
+                    for l in Lang::ALL {
+                        ui.selectable_value(lang, l, l.name());
+                    }
+                })
+                .response
+                .on_hover_text(t(*lang, Key::Language));
+        });
+    });
+    ui.add_space(4.0);
+}
+
 pub fn show(ui: &mut egui::Ui, state: &AppState, log: &[String], lang: Lang) -> Option<Command> {
+    egui::ScrollArea::vertical()
+        .auto_shrink([false; 2])
+        .show(ui, |ui| show_inner(ui, state, log, lang))
+        .inner
+}
+
+fn show_inner(ui: &mut egui::Ui, state: &AppState, log: &[String], lang: Lang) -> Option<Command> {
     let (icon, title, color, body) = header(state, lang);
     ui.add_space(12.0);
     ui.vertical_centered(|ui| {
@@ -204,6 +243,12 @@ pub fn show(ui: &mut egui::Ui, state: &AppState, log: &[String], lang: Lang) -> 
 mod tests {
     use super::*;
     use crate::model::DeviceInfo;
+
+    #[test]
+    fn github_svg_embedded() {
+        let svg = include_str!("../assets/github.svg");
+        assert!(!svg.is_empty() && svg.contains("<path"));
+    }
 
     #[test]
     fn main_button_per_state() {

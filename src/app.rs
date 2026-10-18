@@ -38,6 +38,14 @@ impl eframe::App for App {
             }
         }
 
+        let prev = self.lang;
+        egui::Panel::bottom("footer").show(ui, |ui| ui::footer(ui, &mut self.lang));
+        if self.lang != prev {
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Title(
+                t(self.lang, Key::WindowTitle).into(),
+            ));
+        }
+
         let mut cmd = None;
         egui::CentralPanel::default().show(ui, |ui| {
             cmd = ui::show(ui, &self.state, &self.log, self.lang);

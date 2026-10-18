@@ -1,5 +1,3 @@
-// ponytail: MadeBy/Language/Lang::ALL/name are consumed by task 02 (footer + dropdown); drop this allow then.
-#![allow(dead_code)]
 //! All user-facing strings, in es/en/pt. Templates use `{v}`, `{name}`, `{model}`, `{detail}`
 //! placeholders filled by the caller with `str::replace`.
 
@@ -48,6 +46,7 @@ macro_rules! strings {
         pub enum Key { $($key),* }
 
         impl Key {
+            #[cfg(test)]
             pub const ALL: &'static [Key] = &[$(Key::$key),*];
         }
 

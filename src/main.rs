@@ -31,6 +31,7 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             let ctx = cc.egui_ctx.clone();
+            egui_extras::install_image_loaders(&ctx);
             let (ev_tx, ev_rx) = std::sync::mpsc::channel();
             let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
             handle.spawn(poller::run_worker(

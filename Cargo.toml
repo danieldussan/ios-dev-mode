@@ -7,6 +7,7 @@ edition = "2024"
 anyhow = "1.0.104"
 async-trait = "0.1.92"
 eframe = { version = "0.35.0", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+egui_extras = { version = "0.35", default-features = false, features = ["svg"] }
 idevice = { version = "=0.1.68", default-features = false, features = ["usbmuxd", "amfi", "ring"] }
 plist = "1.10.1"
 rfd = "0.17.2"
