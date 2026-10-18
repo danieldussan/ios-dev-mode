@@ -23,7 +23,12 @@ fn main() -> eframe::Result {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title(i18n::t(i18n::Lang::from_env(), i18n::Key::WindowTitle))
             .with_inner_size([480.0, 560.0])
-            .with_resizable(false),
+            .with_resizable(false)
+            .with_icon(eframe::egui::IconData {
+                rgba: include_bytes!("../assets/icon-128.rgba").to_vec(),
+                width: 128,
+                height: 128,
+            }),
         ..Default::default()
     };
     eframe::run_native(
