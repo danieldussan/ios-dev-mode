@@ -1,0 +1,212 @@
+use crate::model::{AppState, Command, Step};
+use eframe::egui::{self, Color32, ProgressBar, RichText};
+
+const GREEN: Color32 = Color32::from_rgb(46, 160, 67);
+const RED: Color32 = Color32::from_rgb(214, 59, 59);
+const AMBER: Color32 = Color32::from_rgb(214, 148, 24);
+
+pub fn main_button(s: &AppState) -> (&'static str, Option<Command>) {
+    match s {
+        AppState::Idle | AppState::Success | AppState::NotNeeded(_) => {
+            ("Verificar", Some(Command::Check))
+        }
+        AppState::NoUsbmuxd | AppState::NoDevice | AppState::NotTrusted(_) | AppState::Error(_) => {
+            ("Reintentar", Some(Command::Check))
+        }
+        AppState::Ready(_) => ("Activar", Some(Command::Activate)),
+        AppState::Working(_) | AppState::WaitingUser { .. } => ("Trabajando…", None),
+    }
+}
+
+pub fn step_label(s: Step) -> &'static str {
+    match s {
+        Step::Detect => "Detectar iPhone",
+        Step::Reveal => "Mostrar opción en Ajustes",
+        Step::Enable => "Activar modo desarrollador",
+        Step::Reboot => "Reinicio del iPhone",
+        Step::Reconnect => "Reconexión",
+        Step::Accept => "Enviar confirmación",
+        Step::Confirm => "Confirmar en el iPhone",
+    }
+}
+
+/// (icon, title, color, body)
+fn header(s: &AppState) -> (&'static str, &'static str, Color32, String) {
+    let gray = Color32::GRAY;
+    match s {
+        AppState::Idle => (
+            "📱",
+            "Listo para verificar",
+            gray,
+            "Conecta tu iPhone por USB y toca Verificar.".into(),
+        ),
+        AppState::NoUsbmuxd => (
+            "⚠",
+            "Falta iTunes",
+            RED,
+            "Instala iTunes (o Apple Devices) desde la web de Apple y vuelve a abrir esta app."
+                .into(),
+        ),
+        AppState::NoDevice => (
+            "🔌",
+            "No hay iPhone",
+            AMBER,
+            "Conecta tu iPhone por USB, desbloquéalo y toca Confiar".into(),
+        ),
+        AppState::NotTrusted(_) => (
+            "🔒",
+            "iPhone sin confianza",
+            AMBER,
+            "Toca Confiar en el iPhone y vuelve a intentar".into(),
+        ),
+        AppState::NotNeeded(v) => (
+            "✔",
+            "No es necesario",
+            gray,
+            format!("Este iPhone (iOS {v}) no necesita modo desarrollador"),
+        ),
+        AppState::Ready(d) => (
+            "📱",
+            "iPhone detectado",
+            AMBER,
+            format!(
+                "{} · {} · iOS {}\nEl modo desarrollador está desactivado.",
+                d.name, d.product_type, d.ios_version
+            ),
+        ),
+        AppState::Working(Step::Reconnect) => {
+            ("⏳", "Trabajando…", AMBER, "Desbloquea tu iPhone".into())
+        }
+        AppState::Working(_) => (
+            "⏳",
+            "Trabajando…",
+            AMBER,
+            "No desconectes el cable.".into(),
+        ),
+        AppState::WaitingUser { manual: false } => (
+            "👆",
+            "Falta tu confirmación",
+            AMBER,
+            "En el iPhone toca Activar e ingresa tu código".into(),
+        ),
+        AppState::WaitingUser { manual: true } => (
+            "👆",
+            "Actívalo a mano",
+            AMBER,
+            "Abre Ajustes > Privacidad y seguridad > Modo de desarrollador, actívalo y reinicia"
+                .into(),
+        ),
+        AppState::Success => (
+            "✔",
+            "Modo desarrollador activo",
+            GREEN,
+            "Todo listo.".into(),
+        ),
+        AppState::Error(m) => ("✖", "Algo salió mal", RED, m.clone()),
+    }
+}
+
+/// Fraction of steps done, for the progress bar. None = hide the bar.
+fn progress(s: &AppState) -> Option<(usize, f32)> {
+    let cur = match s {
+        AppState::Working(st) => st.index(),
+        AppState::WaitingUser { .. } => Step::Confirm.index(),
+        AppState::Success => Step::ALL.len(),
+        _ => return None,
+    };
+    Some((cur, cur as f32 / Step::ALL.len() as f32))
+}
+
+pub fn show(ui: &mut egui::Ui, state: &AppState, log: &[String]) -> Option<Command> {
+    let (icon, title, color, body) = header(state);
+    ui.add_space(12.0);
+    ui.vertical_centered(|ui| {
+        ui.label(RichText::new(icon).size(48.0).color(color));
+        ui.label(RichText::new(title).size(24.0).strong().color(color));
+        ui.add_space(6.0);
+        ui.label(RichText::new(body).size(15.0));
+    });
+    ui.add_space(12.0);
+
+    if let Some((cur, frac)) = progress(state) {
+        for st in Step::ALL {
+            let (mark, c) = match st.index().cmp(&cur) {
+                std::cmp::Ordering::Less => ("✔", GREEN),
+                std::cmp::Ordering::Equal if *state != AppState::Success => ("▶", AMBER),
+                _ => ("○", Color32::GRAY),
+            };
+            ui.label(RichText::new(format!("{mark}  {}", step_label(st))).color(c));
+        }
+        ui.add_space(6.0);
+        ui.add(ProgressBar::new(frac));
+    }
+
+    ui.add_space(12.0);
+    let (label, cmd) = main_button(state);
+    let clicked = ui
+        .vertical_centered(|ui| {
+            ui.add_enabled(
+                cmd.is_some(),
+                egui::Button::new(RichText::new(label).size(18.0))
+                    .min_size(egui::vec2(200.0, 40.0)),
+            )
+            .clicked()
+        })
+        .inner;
+
+    ui.add_space(8.0);
+    egui::CollapsingHeader::new("Detalles").show(ui, |ui| {
+        egui::ScrollArea::vertical()
+            .max_height(120.0)
+            .stick_to_bottom(true)
+            .show(ui, |ui| {
+                for l in log {
+                    ui.monospace(l);
+                }
+            });
+    });
+
+    if clicked { cmd } else { None }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::DeviceInfo;
+
+    #[test]
+    fn main_button_per_state() {
+        let d = DeviceInfo {
+            name: "".into(),
+            product_type: "".into(),
+            ios_version: "18".into(),
+            udid: "".into(),
+        };
+        assert_eq!(
+            main_button(&AppState::Idle),
+            ("Verificar", Some(Command::Check))
+        );
+        assert_eq!(main_button(&AppState::Success).1, Some(Command::Check));
+        assert_eq!(
+            main_button(&AppState::NotNeeded("15".into())).1,
+            Some(Command::Check)
+        );
+        for s in [
+            AppState::NoUsbmuxd,
+            AppState::NoDevice,
+            AppState::NotTrusted("x".into()),
+            AppState::Error("e".into()),
+        ] {
+            assert_eq!(main_button(&s), ("Reintentar", Some(Command::Check)));
+        }
+        assert_eq!(
+            main_button(&AppState::Ready(d)),
+            ("Activar", Some(Command::Activate))
+        );
+        assert_eq!(
+            main_button(&AppState::Working(Step::Enable)),
+            ("Trabajando…", None)
+        );
+        assert_eq!(main_button(&AppState::WaitingUser { manual: true }).1, None);
+    }
+}
