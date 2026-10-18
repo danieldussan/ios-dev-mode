@@ -1,6 +1,6 @@
 [package]
 name = "ios-dev-mode"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2024"
 description = "Guided desktop app to reveal and enable Developer Mode on iPhones, no Mac required"
 license = "MIT"
