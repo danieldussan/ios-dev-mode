@@ -93,9 +93,9 @@ fn header(s: &AppState) -> (&'static str, &'static str, Color32, String) {
         ),
         AppState::Waiting(Phase::Rebooting) => (
             "⏳",
-            "Reiniciando…",
+            "Reiniciando...",
             AMBER,
-            "Espera a que el iPhone vuelva a encender.".into(),
+            "Espera a que el iPhone vuelva a encender. La conexión regresa sola.".into(),
         ),
         AppState::Waiting(Phase::Locked) => (
             "🔒",

@@ -83,6 +83,7 @@ pub async fn check(
     state(emit, AppState::Working(Step::Detect));
     let end = Instant::now() + cfg.watch_cap;
     let mut last_err = String::new();
+    let mut last_shown: Option<BackendError> = None;
     loop {
         let det = b.detect().await;
         let res = match det {
@@ -109,11 +110,24 @@ pub async fn check(
                     "Check: iPhone bloqueado (PasswordProtected)".into(),
                 );
                 state(emit, AppState::Waiting(Phase::Locked));
+                last_shown = None;
                 if Instant::now() >= end {
                     state(emit, AppState::Error(MANUAL_HELP.into()));
                     return None;
                 }
                 if let Err(next) = pause(rx, cfg.tick, &mut false).await {
+                    return next;
+                }
+            }
+            // Daemon/phone absent: show the screen once, keep retrying until it returns.
+            Err(e @ (BackendError::NoUsbmuxd | BackendError::NoDevice)) => {
+                note(emit, &mut last_err, format!("Check: {e}"));
+                if last_shown.as_ref() != Some(&e) {
+                    state(emit, check_error(&e));
+                    last_shown = Some(e);
+                }
+                if let Err(next) = pause(rx, cfg.tick.max(Duration::from_secs(3)), &mut false).await
+                {
                     return next;
                 }
             }
@@ -147,7 +161,8 @@ async fn watch(
         }
         let mut next = phase;
         match b.present().await {
-            Ok(false) | Err(BackendError::NoDevice) => {
+            // usbmuxd also dies while the phone reboots (Linux): same as "phone gone".
+            Ok(false) | Err(BackendError::NoDevice | BackendError::NoUsbmuxd) => {
                 gone = true;
                 next = Phase::Rebooting;
             }
@@ -195,10 +210,9 @@ pub async fn activate(
     rx: &mut UnboundedReceiver<Command>,
     emit: Emit<'_>,
 ) -> Option<Command> {
-    // Lost device/daemon is fatal; anything else (enable may drop the connection) -> watch.
-    let fatal = |r: &Result<(), BackendError>| {
-        matches!(r, Err(BackendError::NoUsbmuxd | BackendError::NoDevice))
-    };
+    // Lost device is fatal; anything else (enable may drop the connection, usbmuxd may die
+    // with the reboot) -> watch.
+    let fatal = |r: &Result<(), BackendError>| matches!(r, Err(BackendError::NoDevice));
     state(emit, AppState::Working(Step::Reveal));
     let r = b.reveal().await;
     log(emit, Step::Reveal, &r);
@@ -324,12 +338,40 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn check_no_usbmuxd() {
+    async fn check_no_usbmuxd_shown_once_then_recovers() {
         let b = MockBackend::new(Script {
-            detect: [Err(BackendError::NoUsbmuxd)].into(),
+            detect: [
+                Err(BackendError::NoUsbmuxd),
+                Err(BackendError::NoUsbmuxd),
+                Ok(dev("18.1")),
+            ]
+            .into(),
+            status: [Ok(false)].into(),
             ..Script::default()
         });
-        assert_eq!(run_check(&b).await.last(), Some(&AppState::NoUsbmuxd));
+        let s = run_check(&b).await;
+        let n = s.iter().filter(|x| **x == AppState::NoUsbmuxd).count();
+        assert_eq!(n, 1, "popup state emitted once");
+        assert!(matches!(s.last(), Some(AppState::Ready(_))));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn usbmuxd_gap_during_reboot_never_errors() {
+        let d = BackendError::NoUsbmuxd;
+        let b = MockBackend::new(Script {
+            enable: Err(BackendError::Timeout),
+            present: [Ok(true), Err(d.clone()), Err(d.clone()), Err(d), Ok(true)].into(),
+            status: [Err(BackendError::Locked), Ok(false), Ok(true)].into(),
+            ..Script::default()
+        });
+        let s = run_activate(&b).await;
+        assert!(s.contains(&w(Phase::Rebooting)));
+        assert!(s.contains(&w(Phase::Locked)));
+        assert!(
+            !s.iter()
+                .any(|x| matches!(x, AppState::Error(_) | AppState::NoUsbmuxd))
+        );
+        assert_eq!(s.last(), Some(&AppState::Success));
     }
 
     #[tokio::test(start_paused = true)]
