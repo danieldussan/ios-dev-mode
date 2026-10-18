@@ -2,9 +2,16 @@
 name = "ios-dev-mode"
 version = "0.1.0"
 edition = "2024"
+description = "Guided desktop app to reveal and enable Developer Mode on iPhones, no Mac required"
+license = "MIT"
+authors = ["danieldussan"]
+repository = "https://github.com/danieldussan/ios-dev-mode"
+readme = "README.md"
+keywords = ["ios", "iphone", "developer-mode", "usbmuxd", "egui"]
+categories = ["development-tools"]
+rust-version = "1.85"
 
 [dependencies]
-anyhow = "1.0.104"
 async-trait = "0.1.92"
 eframe = { version = "0.35.0", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 egui_extras = { version = "0.35", default-features = false, features = ["svg"] }
@@ -15,6 +22,7 @@ thiserror = "2"
 tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "time", "sync"] }
 
 [dev-dependencies]
+anyhow = "1.0.104"
 tokio = { version = "1.53.3", features = ["test-util", "macros", "rt"] }
 
 [profile.release]
