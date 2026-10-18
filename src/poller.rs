@@ -1,31 +1,25 @@
 use crate::backend::DevModeBackend;
-use crate::model::{AppState, BackendError, Command, Event, Step};
-use std::future::Future;
+use crate::model::{AppState, BackendError, Command, Event, Phase, Step};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::{Instant, sleep};
 
 pub struct PollConfig {
-    pub gone_cap: Duration,
-    pub back_cap: Duration,
-    pub ready_cap: Duration,
-    pub status_cap: Duration,
-    pub manual_cap: Duration,
-    pub fast: Duration,
-    pub slow: Duration,
+    /// Poll period while watching the phone.
+    pub tick: Duration,
+    /// Min time between automatic `accept` attempts.
+    pub accept_every: Duration,
+    /// Total time before giving up on the watching phase.
+    pub watch_cap: Duration,
 }
 
 impl Default for PollConfig {
     fn default() -> Self {
         Self {
-            gone_cap: Duration::from_secs(20),
-            back_cap: Duration::from_secs(90),
-            ready_cap: Duration::from_secs(120),
-            status_cap: Duration::from_secs(180),
-            manual_cap: Duration::from_secs(300),
-            fast: Duration::from_secs(1),
-            slow: Duration::from_secs(3),
+            tick: Duration::from_secs(2),
+            accept_every: Duration::from_secs(10),
+            watch_cap: Duration::from_secs(15 * 60),
         }
     }
 }
@@ -42,135 +36,186 @@ fn state(emit: Emit, s: AppState) {
     emit(Event::State(s));
 }
 
-pub async fn check(b: &dyn DevModeBackend, emit: Emit<'_>) {
-    state(emit, AppState::Working(Step::Detect));
-    let det = b.detect().await;
-    log(emit, Step::Detect, &det);
-    let d = match det {
-        Ok(d) => d,
-        Err(e) => return state(emit, AppState::from_error(&e)),
-    };
-    if (1..16).contains(&d.ios_major()) {
-        return state(emit, AppState::NotNeeded(d.ios_version));
+/// Logs `msg` only when it differs from the previous one (no spam every tick).
+fn note(emit: Emit, last: &mut String, msg: String) {
+    if *last != msg {
+        emit(Event::Log(msg.clone()));
+        *last = msg;
     }
-    let st = b.status().await;
-    log(emit, Step::Confirm, &st);
-    state(
-        emit,
-        match st {
-            Ok(true) => AppState::Success,
-            Ok(false) => AppState::Ready(d),
-            Err(e) => AppState::from_error(&e),
-        },
-    );
 }
 
-/// Calls `f` every `every` until it yields Some or `cap` elapses.
-async fn poll_until<T, Fut: Future<Output = Option<T>>>(
-    cap: Duration,
-    every: Duration,
-    mut f: impl FnMut() -> Fut,
-) -> Option<T> {
-    let end = Instant::now() + cap;
-    loop {
-        if let Some(v) = f().await {
-            return Some(v);
+/// Sleeps one tick, or returns early on a command. Err(next) = leave the loop.
+async fn pause(
+    rx: &mut UnboundedReceiver<Command>,
+    tick: Duration,
+    force: &mut bool,
+) -> Result<(), Option<Command>> {
+    tokio::select! {
+        c = rx.recv() => match c {
+            None => Err(None),
+            Some(Command::Verify) => { *force = true; Ok(()) }
+            Some(Command::Activate) => Ok(()),
+            Some(c @ Command::Check) => Err(Some(c)),
+        },
+        _ = sleep(tick) => Ok(()),
+    }
+}
+
+fn check_error(e: &BackendError) -> AppState {
+    match e {
+        BackendError::NoUsbmuxd | BackendError::NoDevice | BackendError::NotTrusted(_) => {
+            AppState::from_error(e)
         }
+        other => AppState::Error(format!(
+            "No se pudo leer el iPhone ({other}). {MANUAL_HELP}"
+        )),
+    }
+}
+
+/// Detect + status. While the phone is locked (always right after a reboot) shows the unlock
+/// screen and retries every tick until it answers.
+pub async fn check(
+    b: &dyn DevModeBackend,
+    cfg: &PollConfig,
+    rx: &mut UnboundedReceiver<Command>,
+    emit: Emit<'_>,
+) -> Option<Command> {
+    state(emit, AppState::Working(Step::Detect));
+    let end = Instant::now() + cfg.watch_cap;
+    let mut last_err = String::new();
+    loop {
+        let det = b.detect().await;
+        let res = match det {
+            Err(e) => Err(e),
+            Ok(d) if (1..16).contains(&d.ios_major()) => {
+                state(emit, AppState::NotNeeded(d.ios_version));
+                return None;
+            }
+            Ok(d) => b.status().await.map(|st| (d, st)),
+        };
+        match res {
+            Ok((_, true)) => {
+                state(emit, AppState::Success);
+                return None;
+            }
+            Ok((d, false)) => {
+                state(emit, AppState::Ready(d));
+                return None;
+            }
+            Err(BackendError::Locked) => {
+                note(
+                    emit,
+                    &mut last_err,
+                    "Check: iPhone bloqueado (PasswordProtected)".into(),
+                );
+                state(emit, AppState::Waiting(Phase::Locked));
+                if Instant::now() >= end {
+                    state(emit, AppState::Error(MANUAL_HELP.into()));
+                    return None;
+                }
+                if let Err(next) = pause(rx, cfg.tick, &mut false).await {
+                    return next;
+                }
+            }
+            Err(e) => {
+                emit(Event::Log(format!("Check: {e}")));
+                state(emit, check_error(&e));
+                return None;
+            }
+        }
+    }
+}
+
+/// Watches the phone until Developer Mode is on, whatever path the user takes
+/// (Settings only, reboot, auto flow). `force` makes the first tick run detect + accept.
+async fn watch(
+    b: &dyn DevModeBackend,
+    cfg: &PollConfig,
+    rx: &mut UnboundedReceiver<Command>,
+    emit: Emit<'_>,
+    mut force: bool,
+) -> Option<Command> {
+    let end = Instant::now() + cfg.watch_cap;
+    let mut phase = Phase::Settings;
+    state(emit, AppState::Waiting(phase));
+    let (mut gone, mut last_err) = (false, String::new());
+    let mut last_accept: Option<Instant> = None;
+    loop {
+        if force {
+            let d = b.detect().await;
+            log(emit, Step::Detect, &d);
+        }
+        let mut next = phase;
+        match b.present().await {
+            Ok(false) | Err(BackendError::NoDevice) => {
+                gone = true;
+                next = Phase::Rebooting;
+            }
+            Err(e) => note(emit, &mut last_err, format!("present: {e}")),
+            Ok(true) => match b.status().await {
+                Ok(true) => {
+                    state(emit, AppState::Success);
+                    return None;
+                }
+                Ok(false) => {
+                    next = if gone || force {
+                        Phase::Confirm
+                    } else {
+                        Phase::Settings
+                    };
+                    let due = last_accept.is_none_or(|t| t.elapsed() >= cfg.accept_every);
+                    if next == Phase::Confirm && (force || due) {
+                        last_accept = Some(Instant::now());
+                        let r = b.accept().await;
+                        log(emit, Step::Accept, &r);
+                    }
+                }
+                Err(BackendError::Locked) => next = Phase::Locked,
+                Err(e) => note(emit, &mut last_err, format!("status: {e}")),
+            },
+        }
+        if next != phase {
+            phase = next;
+            state(emit, AppState::Waiting(phase));
+        }
+        force = false;
         if Instant::now() >= end {
+            state(emit, AppState::Error(MANUAL_HELP.into()));
             return None;
         }
-        sleep(every).await;
+        if let Err(next) = pause(rx, cfg.tick, &mut force).await {
+            return next;
+        }
     }
 }
 
-async fn wait_status(b: &dyn DevModeBackend, cap: Duration, every: Duration) -> bool {
-    poll_until(cap, every, || async {
-        matches!(b.status().await, Ok(true)).then_some(())
-    })
-    .await
-    .is_some()
-}
-
-async fn manual(b: &dyn DevModeBackend, cfg: &PollConfig, emit: Emit<'_>) {
-    state(emit, AppState::WaitingUser { manual: true });
-    let ok = wait_status(b, cfg.manual_cap, cfg.slow).await;
-    state(
-        emit,
-        if ok {
-            AppState::Success
-        } else {
-            AppState::Error(MANUAL_HELP.into())
-        },
-    );
-}
-
-fn fail(emit: Emit, msg: &str) {
-    state(emit, AppState::Error(msg.into()));
-}
-
-pub async fn activate(b: &dyn DevModeBackend, cfg: &PollConfig, emit: Emit<'_>) {
+pub async fn activate(
+    b: &dyn DevModeBackend,
+    cfg: &PollConfig,
+    rx: &mut UnboundedReceiver<Command>,
+    emit: Emit<'_>,
+) -> Option<Command> {
+    // Lost device/daemon is fatal; anything else (enable may drop the connection) -> watch.
+    let fatal = |r: &Result<(), BackendError>| {
+        matches!(r, Err(BackendError::NoUsbmuxd | BackendError::NoDevice))
+    };
     state(emit, AppState::Working(Step::Reveal));
     let r = b.reveal().await;
     log(emit, Step::Reveal, &r);
-    if r.is_err() {
-        return manual(b, cfg, emit).await;
+    if fatal(&r) {
+        state(emit, AppState::from_error(&r.unwrap_err()));
+        return None;
     }
-
-    state(emit, AppState::Working(Step::Enable));
-    let r = b.enable().await;
-    log(emit, Step::Enable, &r);
-    if r.is_err() {
-        return manual(b, cfg, emit).await;
+    if r.is_ok() {
+        state(emit, AppState::Working(Step::Enable));
+        let r = b.enable().await;
+        log(emit, Step::Enable, &r);
+        if fatal(&r) {
+            state(emit, AppState::from_error(&r.unwrap_err()));
+            return None;
+        }
     }
-
-    state(emit, AppState::Working(Step::Reboot));
-    let gone = poll_until(cfg.gone_cap, cfg.fast, || async {
-        let p = b.present().await;
-        matches!(p, Ok(false) | Err(BackendError::NoDevice)).then_some(())
-    })
-    .await;
-    log(emit, Step::Reboot, &gone);
-    if gone.is_none() {
-        return fail(
-            emit,
-            "El iPhone no se reinició. Actívalo a mano: Ajustes > Privacidad y seguridad > Modo de desarrollador.",
-        );
-    }
-
-    state(emit, AppState::Working(Step::Reconnect));
-    let back = poll_until(cfg.back_cap, cfg.fast, || async {
-        matches!(b.present().await, Ok(true)).then_some(())
-    })
-    .await;
-    let ready = match back {
-        // Any Err = still locked/booting, keep going.
-        Some(()) => poll_until(cfg.ready_cap, cfg.slow, || async { b.detect().await.ok() }).await,
-        None => None,
-    };
-    log(emit, Step::Reconnect, &ready.is_some());
-    if ready.is_none() {
-        return fail(
-            emit,
-            "El iPhone no volvió a conectarse. Desbloquéalo, revisa el cable y toca Reintentar.",
-        );
-    }
-
-    state(emit, AppState::Working(Step::Accept));
-    let r = b.accept().await;
-    log(emit, Step::Accept, &r);
-    if let Err(e) = r {
-        return state(emit, AppState::Error(e.to_string()));
-    }
-
-    state(emit, AppState::WaitingUser { manual: false });
-    if wait_status(b, cfg.status_cap, cfg.slow).await {
-        state(emit, AppState::Success);
-    } else {
-        fail(
-            emit,
-            "No se confirmó a tiempo. En el iPhone toca Activar e ingresa tu código, luego toca Reintentar.",
-        );
-    }
+    watch(b, cfg, rx, emit, false).await
 }
 
 pub async fn run_worker(
@@ -179,11 +224,20 @@ pub async fn run_worker(
     cfg: PollConfig,
     emit: impl Fn(Event) + Send + Sync + 'static,
 ) {
-    while let Some(cmd) = rx.recv().await {
-        match cmd {
-            Command::Check => check(&*b, &emit).await,
-            Command::Activate => activate(&*b, &cfg, &emit).await,
-        }
+    let mut pending = None;
+    loop {
+        let cmd = match pending.take() {
+            Some(c) => c,
+            None => match rx.recv().await {
+                Some(c) => c,
+                None => return,
+            },
+        };
+        pending = match cmd {
+            Command::Check => check(&*b, &cfg, &mut rx, &emit).await,
+            Command::Activate => activate(&*b, &cfg, &mut rx, &emit).await,
+            Command::Verify => watch(&*b, &cfg, &mut rx, &emit, true).await,
+        };
     }
 }
 
@@ -193,6 +247,7 @@ mod tests {
     use crate::backend::mock::{MockBackend, Script};
     use crate::model::DeviceInfo;
     use std::sync::Mutex;
+    use tokio::sync::mpsc::unbounded_channel;
 
     fn dev(v: &str) -> DeviceInfo {
         DeviceInfo {
@@ -218,14 +273,26 @@ mod tests {
 
     async fn run_check(b: &MockBackend) -> Vec<AppState> {
         let sink = Sink::default();
-        check(b, &|e| sink.lock().unwrap().push(e)).await;
+        let (_tx, mut rx) = unbounded_channel();
+        check(b, &PollConfig::default(), &mut rx, &|e| {
+            sink.lock().unwrap().push(e)
+        })
+        .await;
         states(&sink)
     }
 
     async fn run_activate(b: &MockBackend) -> Vec<AppState> {
         let sink = Sink::default();
-        activate(b, &PollConfig::default(), &|e| sink.lock().unwrap().push(e)).await;
+        let (_tx, mut rx) = unbounded_channel();
+        activate(b, &PollConfig::default(), &mut rx, &|e| {
+            sink.lock().unwrap().push(e)
+        })
+        .await;
         states(&sink)
+    }
+
+    fn w(p: Phase) -> AppState {
+        AppState::Waiting(p)
     }
 
     #[tokio::test(start_paused = true)]
@@ -236,6 +303,24 @@ mod tests {
             ..Script::default()
         });
         assert_eq!(run_check(&b).await.last(), Some(&AppState::Success));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn check_locked_retries_until_unlocked() {
+        let b = MockBackend::new(Script {
+            detect: [Ok(dev("18.1"))].into(),
+            status: [
+                Err(BackendError::Locked),
+                Err(BackendError::Locked),
+                Ok(true),
+            ]
+            .into(),
+            ..Script::default()
+        });
+        let s = run_check(&b).await;
+        assert!(s.contains(&w(Phase::Locked)));
+        assert!(!s.iter().any(|x| matches!(x, AppState::Error(_))));
+        assert_eq!(s.last(), Some(&AppState::Success));
     }
 
     #[tokio::test(start_paused = true)]
@@ -260,58 +345,153 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn activate_happy_path() {
+    async fn check_other_error_is_spanish() {
         let b = MockBackend::new(Script {
-            present: [Ok(true), Ok(false), Ok(true)].into(),
-            detect: [
-                Err(BackendError::NotTrusted("locked".into())),
-                Ok(dev("18.1")),
-            ]
-            .into(),
-            status: [Ok(false), Ok(false), Ok(true)].into(),
+            detect: [Err(BackendError::Other("boom".into()))].into(),
             ..Script::default()
         });
-        assert_eq!(run_activate(&b).await.last(), Some(&AppState::Success));
-        let calls = b.calls();
-        let pos = |n: &str| calls.iter().position(|c| *c == n).unwrap();
-        assert!(pos("reveal") < pos("enable"));
-        assert!(pos("enable") < pos("present"));
-        assert!(pos("detect") < pos("accept"));
-        assert!(pos("accept") < pos("status"));
-        assert_eq!(calls.iter().filter(|c| **c == "detect").count(), 2);
+        let s = run_check(&b).await;
+        assert!(matches!(s.last(), Some(AppState::Error(m)) if m.contains("No se pudo leer")));
     }
 
     #[tokio::test(start_paused = true)]
-    async fn activate_never_reboots_errors() {
+    async fn reboot_then_locked_then_confirm_then_success() {
         let b = MockBackend::new(Script {
-            present: [Ok(true)].into(),
+            enable: Err(BackendError::Timeout),
+            present: [Ok(true), Ok(false), Ok(true)].into(),
+            status: [Err(BackendError::Locked), Ok(false), Ok(true)].into(),
             ..Script::default()
         });
         let s = run_activate(&b).await;
-        assert!(matches!(s.last(), Some(AppState::Error(m)) if m.contains("no se reinició")));
+        for p in [Phase::Rebooting, Phase::Locked, Phase::Confirm] {
+            assert!(s.contains(&w(p)), "missing {p:?}");
+        }
+        assert_eq!(s.last(), Some(&AppState::Success));
+        assert!(b.calls().contains(&"accept"));
     }
 
     #[tokio::test(start_paused = true)]
-    async fn activate_status_never_true_errors() {
+    async fn settings_only_no_reboot_succeeds() {
         let b = MockBackend::new(Script {
-            present: [Ok(false), Ok(true)].into(),
-            detect: [Ok(dev("18.1"))].into(),
+            present: [Ok(true)].into(),
+            status: [Ok(false), Ok(false), Ok(true)].into(),
+            ..Script::default()
+        });
+        let s = run_activate(&b).await;
+        assert!(!s.contains(&w(Phase::Rebooting)));
+        assert_eq!(s.last(), Some(&AppState::Success));
+        assert!(!b.calls().contains(&"accept"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn locked_never_errors_before_cap() {
+        let b = MockBackend::new(Script {
+            present: [Ok(true)].into(),
+            status: [Err(BackendError::Locked)].into(),
+            ..Script::default()
+        });
+        let sink = Sink::default();
+        let (_tx, mut rx) = unbounded_channel();
+        let r = tokio::time::timeout(
+            Duration::from_secs(14 * 60),
+            activate(&b, &PollConfig::default(), &mut rx, &|e| {
+                sink.lock().unwrap().push(e)
+            }),
+        )
+        .await;
+        assert!(r.is_err(), "should still be watching");
+        assert!(
+            !states(&sink)
+                .iter()
+                .any(|x| matches!(x, AppState::Error(_)))
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cap_errors_with_help() {
+        let b = MockBackend::new(Script {
+            present: [Ok(true)].into(),
             status: [Ok(false)].into(),
             ..Script::default()
         });
         let s = run_activate(&b).await;
-        assert!(matches!(s.last(), Some(AppState::Error(m)) if m.contains("No se confirmó")));
+        assert!(matches!(s.last(), Some(AppState::Error(m)) if m.contains("Reintentar")));
     }
 
     #[tokio::test(start_paused = true)]
-    async fn reveal_error_falls_back_to_manual() {
+    async fn reveal_error_falls_back_to_watch() {
         let b = MockBackend::new(Script {
             reveal: Err(BackendError::Other("nope".into())),
+            present: [Ok(true)].into(),
             status: [Ok(false), Ok(true)].into(),
             ..Script::default()
         });
         let s = run_activate(&b).await;
-        assert!(s.contains(&AppState::WaitingUser { manual: true }));
+        assert!(s.contains(&w(Phase::Settings)));
         assert_eq!(s.last(), Some(&AppState::Success));
+        assert!(!b.calls().contains(&"enable"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn enable_no_device_is_fatal() {
+        let b = MockBackend::new(Script {
+            enable: Err(BackendError::NoDevice),
+            ..Script::default()
+        });
+        assert_eq!(run_activate(&b).await.last(), Some(&AppState::NoDevice));
+    }
+
+    async fn run_cmds(b: MockBackend, cmds: &[Command]) -> (Vec<AppState>, Vec<&'static str>) {
+        let b = Arc::new(b);
+        let sink = Arc::new(Sink::default());
+        let (tx, rx) = unbounded_channel();
+        for c in cmds {
+            tx.send(*c).unwrap();
+        }
+        drop(tx);
+        let s2 = sink.clone();
+        run_worker(b.clone(), rx, PollConfig::default(), move |e| {
+            s2.lock().unwrap().push(e)
+        })
+        .await;
+        (states(&sink), b.calls())
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn verify_forces_detect_and_accept() {
+        let b = MockBackend::new(Script {
+            present: [Ok(true)].into(),
+            status: [Ok(false)].into(),
+            ..Script::default()
+        });
+        // Channel closes after the forced first tick, ending the watcher.
+        let (s, calls) = run_cmds(b, &[Command::Verify]).await;
+        assert_eq!(s.last(), Some(&w(Phase::Confirm)));
+        assert!(calls.contains(&"detect") && calls.contains(&"accept"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn verify_works_after_error_state() {
+        let b = MockBackend::new(Script {
+            detect: [Err(BackendError::Other("x".into()))].into(),
+            present: [Ok(true)].into(),
+            status: [Ok(true)].into(),
+            ..Script::default()
+        });
+        let (s, _) = run_cmds(b, &[Command::Check, Command::Verify]).await;
+        assert!(s.iter().any(|x| matches!(x, AppState::Error(_))));
+        assert_eq!(s.last(), Some(&AppState::Success));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn check_while_watching_cancels() {
+        let b = MockBackend::new(Script {
+            detect: [Ok(dev("18.1"))].into(),
+            present: [Ok(true)].into(),
+            status: [Ok(false)].into(),
+            ..Script::default()
+        });
+        let (s, _) = run_cmds(b, &[Command::Activate, Command::Check]).await;
+        assert!(matches!(s.last(), Some(AppState::Ready(_))));
     }
 }

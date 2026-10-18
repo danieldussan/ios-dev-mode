@@ -55,6 +55,7 @@ impl MockBackend {
         self
     }
 
+    #[cfg(test)]
     pub fn calls(&self) -> Vec<&'static str> {
         self.calls.lock().unwrap().clone()
     }

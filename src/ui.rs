@@ -1,4 +1,4 @@
-use crate::model::{AppState, Command, Step};
+use crate::model::{AppState, Command, Phase, Step};
 use eframe::egui::{self, Color32, ProgressBar, RichText};
 
 const GREEN: Color32 = Color32::from_rgb(46, 160, 67);
@@ -14,7 +14,8 @@ pub fn main_button(s: &AppState) -> (&'static str, Option<Command>) {
             ("Reintentar", Some(Command::Check))
         }
         AppState::Ready(_) => ("Activar", Some(Command::Activate)),
-        AppState::Working(_) | AppState::WaitingUser { .. } => ("Trabajando…", None),
+        AppState::Working(_) => ("Trabajando…", None),
+        AppState::Waiting(_) => ("Ya reinicié / Verificar ahora", Some(Command::Verify)),
     }
 }
 
@@ -83,18 +84,30 @@ fn header(s: &AppState) -> (&'static str, &'static str, Color32, String) {
             AMBER,
             "No desconectes el cable.".into(),
         ),
-        AppState::WaitingUser { manual: false } => (
+        AppState::Waiting(Phase::Settings) => (
+            "👆",
+            "Actívalo en Ajustes",
+            AMBER,
+            "Abre Ajustes > Privacidad y seguridad > Modo de desarrollador, actívalo y reinicia el iPhone."
+                .into(),
+        ),
+        AppState::Waiting(Phase::Rebooting) => (
+            "⏳",
+            "Reiniciando…",
+            AMBER,
+            "Espera a que el iPhone vuelva a encender.".into(),
+        ),
+        AppState::Waiting(Phase::Locked) => (
+            "🔒",
+            "Desbloquea el iPhone",
+            AMBER,
+            "Después de reiniciar, el iPhone necesita tu código. Ingrésalo en el iPhone y esta pantalla seguirá sola.".into(),
+        ),
+        AppState::Waiting(Phase::Confirm) => (
             "👆",
             "Falta tu confirmación",
             AMBER,
-            "En el iPhone toca Activar e ingresa tu código".into(),
-        ),
-        AppState::WaitingUser { manual: true } => (
-            "👆",
-            "Actívalo a mano",
-            AMBER,
-            "Abre Ajustes > Privacidad y seguridad > Modo de desarrollador, actívalo y reinicia"
-                .into(),
+            "Confirma en el iPhone: toca Activar e ingresa tu código".into(),
         ),
         AppState::Success => (
             "✔",
@@ -109,8 +122,9 @@ fn header(s: &AppState) -> (&'static str, &'static str, Color32, String) {
 /// Fraction of steps done, for the progress bar. None = hide the bar.
 fn progress(s: &AppState) -> Option<(usize, f32)> {
     let cur = match s {
+        AppState::Working(Step::Detect) => return None,
         AppState::Working(st) => st.index(),
-        AppState::WaitingUser { .. } => Step::Confirm.index(),
+        AppState::Waiting(p) => p.step().index(),
         AppState::Success => Step::ALL.len(),
         _ => return None,
     };
@@ -143,16 +157,19 @@ pub fn show(ui: &mut egui::Ui, state: &AppState, log: &[String]) -> Option<Comma
 
     ui.add_space(12.0);
     let (label, cmd) = main_button(state);
-    let clicked = ui
-        .vertical_centered(|ui| {
-            ui.add_enabled(
-                cmd.is_some(),
-                egui::Button::new(RichText::new(label).size(18.0))
-                    .min_size(egui::vec2(200.0, 40.0)),
-            )
-            .clicked()
-        })
-        .inner;
+    let mut out = None;
+    ui.vertical_centered(|ui| {
+        let main = ui.add_enabled(
+            cmd.is_some(),
+            egui::Button::new(RichText::new(label).size(18.0)).min_size(egui::vec2(200.0, 40.0)),
+        );
+        if main.clicked() {
+            out = cmd;
+        }
+        if matches!(state, AppState::Waiting(_)) && ui.button("Cancelar").clicked() {
+            out = Some(Command::Check);
+        }
+    });
 
     ui.add_space(8.0);
     egui::CollapsingHeader::new("Detalles").show(ui, |ui| {
@@ -166,7 +183,7 @@ pub fn show(ui: &mut egui::Ui, state: &AppState, log: &[String]) -> Option<Comma
             });
     });
 
-    if clicked { cmd } else { None }
+    out
 }
 
 #[cfg(test)]
@@ -207,6 +224,9 @@ mod tests {
             main_button(&AppState::Working(Step::Enable)),
             ("Trabajando…", None)
         );
-        assert_eq!(main_button(&AppState::WaitingUser { manual: true }).1, None);
+        assert_eq!(
+            main_button(&AppState::Waiting(Phase::Settings)),
+            ("Ya reinicié / Verificar ahora", Some(Command::Verify))
+        );
     }
 }

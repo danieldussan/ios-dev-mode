@@ -25,6 +25,8 @@ pub enum BackendError {
     NoDevice,
     #[error("device not trusted: {0}")]
     NotTrusted(String),
+    #[error("device locked")]
+    Locked,
     #[error("timed out")]
     Timeout,
     #[error("{0}")]
@@ -58,6 +60,30 @@ impl Step {
     }
 }
 
+/// What the user-facing watcher currently believes is happening on the phone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Phase {
+    /// User must enable Developer Mode in Settings and restart.
+    Settings,
+    Rebooting,
+    /// Phone is back but locked.
+    Locked,
+    /// Phone shows the "Turn On" dialog.
+    Confirm,
+}
+
+impl Phase {
+    /// Wizard step highlighted for this phase.
+    pub fn step(self) -> Step {
+        match self {
+            Phase::Settings => Step::Enable,
+            Phase::Rebooting => Step::Reboot,
+            Phase::Locked => Step::Reconnect,
+            Phase::Confirm => Step::Confirm,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppState {
     Idle,
@@ -69,10 +95,8 @@ pub enum AppState {
     /// Detected, Developer Mode OFF
     Ready(DeviceInfo),
     Working(Step),
-    /// manual=true: user toggles in Settings
-    WaitingUser {
-        manual: bool,
-    },
+    /// Watching the phone while the user acts on it.
+    Waiting(Phase),
     Success,
     Error(String),
 }
@@ -83,6 +107,9 @@ impl AppState {
             BackendError::NoUsbmuxd => AppState::NoUsbmuxd,
             BackendError::NoDevice => AppState::NoDevice,
             BackendError::NotTrusted(m) => AppState::NotTrusted(m.clone()),
+            BackendError::Locked => {
+                AppState::Error("Desbloquea el iPhone y toca Reintentar.".into())
+            }
             other => AppState::Error(other.to_string()),
         }
     }
@@ -92,6 +119,8 @@ impl AppState {
 pub enum Command {
     Check,
     Activate,
+    /// Check now while watching: detect + status (+ accept).
+    Verify,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,6 +158,7 @@ mod tests {
             AppState::from_error(&NotTrusted("x".into())),
             AppState::NotTrusted("x".into())
         );
+        assert!(matches!(AppState::from_error(&Locked), AppState::Error(_)));
         assert_eq!(
             AppState::from_error(&Timeout),
             AppState::Error("timed out".into())

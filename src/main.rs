@@ -1,6 +1,4 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-// Real backend (task 02) constructs the error variants; remove once wired.
-#![allow(dead_code)]
 mod app;
 mod backend;
 mod model;
@@ -43,6 +41,7 @@ fn main() -> eframe::Result {
                     ctx.request_repaint();
                 },
             ));
+            let _ = cmd_tx.send(model::Command::Check);
             Ok(Box::new(app::App::new(cmd_tx, ev_rx)))
         }),
     )
