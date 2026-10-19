@@ -48,6 +48,18 @@ Typical flow:
 4. After the reboot, unlock with your passcode and tap **Turn On** when asked.
 5. The app detects it and shows *Developer Mode active*. If it does not move on, press **Verify now**.
 
+## On a Mac
+
+There is no macOS build, and you do not need one: Xcode does the same job.
+
+1. Install [Xcode](https://apps.apple.com/app/xcode/id497799835) from the Mac App Store, open it once and accept the license and extra components.
+2. Connect the iPhone by USB, unlock it and tap **Trust**.
+3. In Xcode open *Window > Devices and Simulators* (`Shift + Cmd + 2`) and wait for the iPhone to appear in the list.
+4. On the iPhone: *Settings > Privacy & Security > Developer Mode*, turn it on and tap **Restart** when asked.
+5. After the reboot, unlock with your passcode and tap **Turn On** when asked.
+
+If the switch does not show up, see Apple's guide: [Enabling Developer Mode on a device](https://developer.apple.com/documentation/xcode/enabling-developer-mode-on-a-device).
+
 ## Tested
 
 | Device | iOS | Result |

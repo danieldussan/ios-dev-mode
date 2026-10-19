@@ -48,6 +48,18 @@ Flujo típico:
 4. Tras el reinicio, desbloquea con tu código y toca **Activar** cuando lo pida.
 5. La app lo detecta y muestra *Modo desarrollador activo*. Si no avanza, pulsa **Verificar ahora**.
 
+## En Mac
+
+No hay versión para macOS y no hace falta: Xcode cumple la misma función.
+
+1. Instala [Xcode](https://apps.apple.com/app/xcode/id497799835) desde la Mac App Store, ábrelo una vez y acepta la licencia y los componentes adicionales.
+2. Conecta el iPhone por USB, desbloquéalo y toca **Confiar**.
+3. En Xcode abre *Window > Devices and Simulators* (`Shift + Cmd + 2`) y espera a que el iPhone aparezca en la lista.
+4. En el iPhone: *Ajustes > Privacidad y seguridad > Modo desarrollador*, actívalo y toca **Reiniciar** cuando lo pida.
+5. Tras el reinicio, desbloquea con tu código y toca **Activar** cuando lo pida.
+
+Si el interruptor no aparece, consulta la guía de Apple: [Enabling Developer Mode on a device](https://developer.apple.com/documentation/xcode/enabling-developer-mode-on-a-device).
+
 ## Probado
 
 | Dispositivo | iOS | Resultado |
