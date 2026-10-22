@@ -1,89 +1,112 @@
 # ios-dev-mode
 
-Small desktop app that walks you through revealing and enabling **Developer Mode** on an iPhone (iOS 16+), without a Mac or Xcode. Built with Rust, [egui](https://github.com/emilk/egui) and [`idevice`](https://crates.io/crates/idevice).
+App de escritorio que te guía para mostrar y activar el **Modo de desarrollador** en un iPhone (iOS 16+), sin Mac ni Xcode. Hecha con Rust, [egui](https://github.com/emilk/egui) e [`idevice`](https://crates.io/crates/idevice).
 
-Languages: English · Español · Português (switch live from the footer). [Leer en español](README.es.md)
+Idiomas: Español · English · Português (se cambia en vivo desde el pie de la ventana). [Read in English](README.en.md)
 
-<p align="center"><img src="assets/activated.png" alt="Developer Mode enabled screen" width="320"></p>
+<p align="center"><img src="assets/activated.png" alt="Pantalla de modo desarrollador activo" width="320"></p>
 
-## What it does
+## Contenido
 
-1. Detects the iPhone over USB (model, iOS version, current Developer Mode status).
-2. Makes the **Developer Mode** switch appear in *Settings > Privacy & Security*.
-3. Watches the phone while you turn it on in Settings and the iPhone restarts. It follows the reboot, the reconnection and the unlock, sends the confirmation request and checks the final status.
+- [Qué hace](#qué-hace)
+- [Requisitos](#requisitos)
+- [Uso](#uso)
+- [En Mac](#en-mac)
+- [Probado](#probado)
+- [Compilar](#compilar)
+- [Notas](#notas)
+- [Licencia](#licencia)
 
-It is not 100% automatic: the iPhone never restarts by itself, and after a reboot iOS requires your passcode once. The app waits for you and tells you what to do at each step.
+## Qué hace
 
-## Requirements
+1. Detecta el iPhone por USB (modelo, versión de iOS y estado actual del modo desarrollador).
+2. Hace aparecer el interruptor **Modo de desarrollador** en *Ajustes > Privacidad y seguridad*.
+3. Vigila el teléfono mientras lo activas en Ajustes y el iPhone se reinicia. Sigue el reinicio, la reconexión y el desbloqueo, envía la confirmación y verifica el estado final.
 
-- iPhone connected by USB and **trusted** on this computer.
-- **Windows:** iTunes (apple.com) or *Apple Devices* (Microsoft Store). They provide the `usbmuxd` service on `127.0.0.1:27015`.
-- **Linux:** the `usbmuxd` package. It stops when no phone is attached and starts again when you plug one in.
-- Rust 1.85+ only if you build from source.
+No es 100% automático: el iPhone no se reinicia solo y, tras reiniciar, iOS pide tu código una vez. La app espera y te dice qué hacer en cada paso.
 
-## Usage
+## Requisitos
 
-Download the binary for your system from the [Releases](../../releases) page, or run from source.
+- iPhone conectado por USB y **de confianza** en este equipo.
+- **Windows:** iTunes (apple.com) o *Apple Devices* (Microsoft Store). Aportan el servicio `usbmuxd` en `127.0.0.1:27015`.
+- **Linux:** el paquete `usbmuxd`. Se detiene cuando no hay teléfono y vuelve a arrancar al conectar uno.
+- Rust 1.85+ solo si compilas desde el código fuente.
 
-- **Windows:** run `ios-dev-mode-windows-x64.exe`.
-- **Linux:** make it executable and run it (with the `usbmuxd` service available):
+## Uso
+
+Descarga el binario de tu sistema desde [Releases](../../releases) o ejecuta desde el código.
+
+- **Windows:** ejecuta `ios-dev-mode-windows-x64.exe`.
+- **Linux:** dale permiso de ejecución y ejecútalo (con el servicio `usbmuxd` disponible):
 
   ```
   chmod +x ios-dev-mode-linux-x64
   ./ios-dev-mode-linux-x64
   ```
 
-From source:
+Desde el código:
 
 ```
 cargo run --release
-cargo run -- --mock     # try the UI without a phone
+cargo run -- --mock     # probar la interfaz sin teléfono
 ```
 
-Typical flow:
+Flujo típico:
 
-1. Connect the iPhone, unlock it and tap **Trust**.
-2. Press **Activate**. The app shows the option in Settings.
-3. On the iPhone: *Settings > Privacy & Security > Developer Mode*, turn it on, then tap **Restart** when the iPhone asks.
-4. After the reboot, unlock with your passcode and tap **Turn On** when asked.
-5. The app detects it and shows *Developer Mode active*. If it does not move on, press **Verify now**.
+1. Conecta el iPhone, desbloquéalo y toca **Confiar**.
+2. Pulsa **Activar**. La app muestra la opción en Ajustes.
+3. En el iPhone: *Ajustes > Privacidad y seguridad > Modo de desarrollador*, actívalo y toca **Reiniciar** cuando el iPhone te lo pida.
+4. Tras el reinicio, desbloquea con tu código y toca **Activar** cuando lo pida.
+5. La app lo detecta y muestra *Modo desarrollador activo*. Si no avanza, pulsa **Verificar ahora**.
 
-## On a Mac
+## En Mac
 
-There is no macOS build, and you do not need one: Xcode does the same job.
+No hay versión para macOS y no hace falta: Xcode cumple la misma función. Primero instala [Xcode](https://apps.apple.com/app/xcode/id497799835) desde la Mac App Store, ábrelo una vez y acepta la licencia y los componentes adicionales. Luego usa cualquiera de los dos métodos.
 
-1. Install [Xcode](https://apps.apple.com/app/xcode/id497799835) from the Mac App Store, open it once and accept the license and extra components.
-2. Connect the iPhone by USB, unlock it and tap **Trust**.
-3. In Xcode open *Window > Devices and Simulators* (`Shift + Cmd + 2`) and wait for the iPhone to appear in the list.
-4. On the iPhone: *Settings > Privacy & Security > Developer Mode*, turn it on and tap **Restart** when asked.
-5. After the reboot, unlock with your passcode and tap **Turn On** when asked.
+### Método 1: automático (solo abrir Xcode)
 
-If the switch does not show up, see Apple's guide: [Enabling Developer Mode on a device](https://developer.apple.com/documentation/xcode/enabling-developer-mode-on-a-device).
+En algunos Mac basta con tener Xcode instalado y abierto con el iPhone conectado: la opción **Modo de desarrollador** aparece sola en el iPhone.
 
-## Tested
+1. Conecta el iPhone por USB, desbloquéalo y toca **Confiar**.
+2. Abre Xcode y espera unos segundos.
+3. Revisa el iPhone: *Ajustes > Privacidad y seguridad > Modo de desarrollador*. Si el interruptor ya está, ve al paso 4 del Método 2.
 
-| Device | iOS | Result |
+Si el interruptor no aparece, usa el Método 2.
+
+### Método 2: manual
+
+1. Conecta el iPhone por USB, desbloquéalo y toca **Confiar**.
+2. En Xcode abre *Window > Devices and Simulators* (`Shift + Cmd + 2`) y espera a que el iPhone aparezca en la lista.
+3. En el iPhone abre *Ajustes > Privacidad y seguridad* y busca **Modo de desarrollador**.
+4. Actívalo y toca **Reiniciar** cuando lo pida.
+5. Tras el reinicio, desbloquea con tu código y toca **Activar** cuando lo pida.
+
+Si el interruptor no aparece, consulta la guía de Apple: [Enabling Developer Mode on a device](https://developer.apple.com/documentation/xcode/enabling-developer-mode-on-a-device).
+
+## Probado
+
+| Dispositivo | iOS | Resultado |
 |---|---|---|
-| iPhone XR | 18.7.9 | Full flow: reveal, manual toggle + reboot, passcode, confirmation, success |
-| iPhone 13 | 27.0.1 | Status read while locked, Developer Mode already on |
+| iPhone XR | 18.7.9 | Flujo completo: mostrar opción, activación manual y reinicio, código, confirmación, éxito |
+| iPhone 13 | 27.0.1 | Lectura de estado con el teléfono bloqueado, modo ya activo |
 
-Behavior on iOS 16/17 is untested (the `reveal` and `enable` calls are documented for iOS 18+). If they fail, the app falls back to manual instructions and keeps checking the status.
+El comportamiento en iOS 16/17 no está probado (`reveal` y `enable` están documentados para iOS 18+). Si fallan, la app pasa a instrucciones manuales y sigue verificando el estado.
 
-## Build
+## Compilar
 
 ```
 cargo build --release
 cargo test && cargo clippy --all-targets -- -D warnings && cargo fmt --check
-cargo run --example spike -- status   # console probe against a real phone
+cargo run --example spike -- status   # sonda por consola con un teléfono real
 ```
 
-`idevice` is pinned to `=0.1.68`: it ships breaking changes on every minor release until 0.2.0. TLS uses the `ring` feature so Windows builds need no cmake or NASM.
+`idevice` está fijado a `=0.1.68`: trae cambios incompatibles en cada versión menor hasta la 0.2.0. El TLS usa la feature `ring` para que en Windows no haga falta cmake ni NASM.
 
-## Notes
+## Notas
 
-- Windows may show a SmartScreen warning because the `.exe` is unsigned.
-- Not affiliated with Apple. Use it on your own devices.
+- Windows puede mostrar un aviso de SmartScreen porque el `.exe` no está firmado.
+- No está afiliado a Apple. Úsalo en tus propios dispositivos.
 
-## License
+## Licencia
 
-[MIT](LICENSE) · made by [danieldussan](https://github.com/danieldussan)
+[MIT](LICENSE) · hecho por [danieldussan](https://github.com/danieldussan)
